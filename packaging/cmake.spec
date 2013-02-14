@@ -1,12 +1,13 @@
 Name:           cmake
-Version:        2.8.9
+Version:        2.8.10.2
 Release:        1
-License:        BSD
+License:        BSD-3-Clause
 Summary:        Cross-platform make system
 Url:            http://www.cmake.org
-Group:          Development/Tools
+Group:          Platfrom Development/Tools
 Source0:        http://www.cmake.org/files/v2.8/cmake-%{version}.tar.gz
 Source1:        macros.cmake
+BuildRequires:  fdupes
 BuildRequires:  expat-devel
 BuildRequires:  pkgconfig(libarchive) >= 2.8.0
 BuildRequires:  pkgconfig(libcurl)
@@ -27,54 +28,40 @@ template instantiation.
 %prep
 %setup -q -n cmake-%{version}
 
-# Fixup permissions
-find -name \*.h -o -name \*.cxx -print0 | xargs -0 chmod -x
-
 %build
-cat > %{buildroot}build-flags.cmake << EOF
-set(CMAKE_SKIP_RPATH YES CACHE BOOL "Skip rpath" FORCE)
-set(CMAKE_USE_RELATIVE_PATHS YES CACHE BOOL "Use relative paths" FORCE)
-set(CMAKE_VERBOSE_MAKEFILE ON CACHE BOOL "Verbose build" FORCE)
-set(CMAKE_C_FLAGS "%{optflags}" CACHE STRING "C flags" FORCE)
-set(CMAKE_CXX_FLAGS "%{optflags}" CACHE STRING "C++ flags" FORCE)
-set(CMAKE_SKIP_BOOTSTRAP_TEST ON CACHE BOOL "Skip BootstrapTest" FORCE)
-set(BUILD_CursesDialog YES CACHE BOOL "Build curses GUI" FORCE)
-set(MINGW_CC_LINUX2WIN_EXECUTABLE "" CACHE FILEPATH "Never detect mingw" FORCE)
-set(CMAKE_USE_SYSTEM_LIBARCHIVE YES CACHE BOOL "" FORCE)
-EOF
-rm -rf %{_target_platform} && mkdir %{_target_platform}
-cd %{_target_platform} && ../bootstrap \
-                          --prefix=%{_prefix} \
-                          --docdir=/share/doc/packages/%{name} \
-                          --mandir=/share/man \
-                          --datadir=/share/cmake \
-                          --%{?with_bootstrap:no-}system-libs \
-                          --parallel=`/usr/bin/getconf _NPROCESSORS_ONLN` \
-                          --init=%{buildroot}build-flags.cmake \
-                          --system-libs
-
+export CXXFLAGS="$RPM_OPT_FLAGS"
+export CFLAGS="$CXXFLAGS"
+./configure \
+    --prefix=%{_prefix} \
+    --datadir=/share/%{name} \
+    --docdir=/share/doc/packages/%{name} \
+    --mandir=/share/man \
+    --system-libs \
+    --parallel=0%jobs \
+    --no-qt-gui
 make VERBOSE=1 %{?_smp_mflags}
 
 %install
-%makeinstall -C %{_target_platform} DESTDIR=%{buildroot}
-find %{buildroot}%{_datadir}/%{name}/Modules -name '*.sh*' -type f | xargs chmod -x
-mkdir -p %{buildroot}%{_datadir}/emacs/site-lisp
-cp -a Example %{buildroot}%{_datadir}/doc/%{name}-%{version}/
-install -m 0644 Docs/cmake-mode.el %{buildroot}%{_datadir}/emacs/site-lisp/
+%make_install 
+mkdir -p %{buildroot}%{_libdir}/cmake
+find %{buildroot}/usr/share/cmake -type f -print0 | xargs -0 chmod 644
+cp ChangeLog.manual %{buildroot}/usr/share/doc/packages/%{name}/Changelog
+
 # Install cmake rpm macros
-install -D -p -m 0644 %{_sourcedir}/macros.cmake \
+install -D -p -m 0644 %{S:1} \
   %{buildroot}%{_sysconfdir}/rpm/macros.cmake
 
-%remove_docs
-rm -rf %{buildroot}/usr/share/doc
+fdupes %buildroot/usr/share/cmake
+
+%docs_package
 
 %files
 %defattr(-,root,root,-)
 %config(noreplace) %{_sysconfdir}/rpm/macros.cmake
+%doc %{_datadir}/doc/packages/%{name}
 %{_datadir}/aclocal/cmake.m4
 %{_bindir}/ccmake
 %{_bindir}/cmake
 %{_bindir}/cpack
 %{_bindir}/ctest
 %{_datadir}/%{name}/*
-%{_datadir}/emacs/*
