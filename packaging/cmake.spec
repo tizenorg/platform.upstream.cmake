@@ -13,7 +13,7 @@ BuildRequires:  pkgconfig(libarchive) >= 2.8.0
 BuildRequires:  pkgconfig(libcurl)
 BuildRequires:  pkgconfig(zlib)
 BuildRequires:  procps
-BuildRequires:  pkgconfig(ncurses)
+BuildRequires:  ncurses-devel
 BuildRequires:  gcc-c++
 
 %description
