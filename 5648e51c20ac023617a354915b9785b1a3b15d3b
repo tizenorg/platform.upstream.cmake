@@ -1,0 +1,10 @@
+Change-Id: I5648e51c20ac023617a354915b9785b1a3b15d3b
+Code-Review+1: Anas Nashif <anas.nashif@intel.com>
+Verified+1: Anas Nashif <anas.nashif@intel.com>
+Code-Review+2: Rusty Lynch <rusty.lynch@intel.com>
+Verified+1: Rusty Lynch <rusty.lynch@intel.com>
+Submitted-by: Rusty Lynch <rusty.lynch@intel.com>
+Submitted-at: Fri, 14 Jun 2013 11:51:48 -0700
+Reviewed-on: https://review.tizen.org/gerrit/4013
+Project: platform/upstream/cmake
+Branch: refs/heads/tizen
