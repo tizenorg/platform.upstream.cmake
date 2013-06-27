@@ -7,6 +7,7 @@ Url:            http://www.cmake.org
 Group:          Platfrom Development/Tools
 Source0:        http://www.cmake.org/files/v2.8/cmake-%{version}.tar.gz
 Source1:        macros.cmake
+Source2:        TizenCommon.cmake
 BuildRequires:  fdupes
 BuildRequires:  expat-devel
 BuildRequires:  pkgconfig(libarchive) >= 2.8.0
@@ -45,7 +46,7 @@ make VERBOSE=1 %{?_smp_mflags}
 %make_install 
 mkdir -p %{buildroot}%{_libdir}/cmake
 find %{buildroot}/usr/share/cmake -type f -print0 | xargs -0 chmod 644
-cp ChangeLog.manual %{buildroot}/usr/share/doc/packages/%{name}/Changelog
+cp %{SOURCE2} %{buildroot}/%{_datadir}/%{name}/Modules
 
 # Install cmake rpm macros
 install -D -p -m 0644 %{S:1} \
@@ -64,4 +65,4 @@ fdupes %buildroot/usr/share/cmake
 %{_bindir}/cmake
 %{_bindir}/cpack
 %{_bindir}/ctest
-%{_datadir}/%{name}/*
+%{_datadir}/%{name}
