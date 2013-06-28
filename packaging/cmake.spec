@@ -8,6 +8,7 @@ Group:          Platfrom Development/Tools
 Source0:        http://www.cmake.org/files/v2.8/cmake-%{version}.tar.gz
 Source1:        macros.cmake
 Source2:        TizenCommon.cmake
+Source1001: 	cmake.manifest
 BuildRequires:  fdupes
 BuildRequires:  expat-devel
 BuildRequires:  pkgconfig(libarchive) >= 2.8.0
@@ -28,6 +29,7 @@ template instantiation.
 
 %prep
 %setup -q -n cmake-%{version}
+cp %{SOURCE1001} .
 
 %build
 export CXXFLAGS="$RPM_OPT_FLAGS"
@@ -57,6 +59,7 @@ fdupes %buildroot/usr/share/cmake
 %docs_package
 
 %files
+%manifest %{name}.manifest
 %defattr(-,root,root,-)
 %config(noreplace) %{_sysconfdir}/rpm/macros.cmake
 %doc %{_datadir}/doc/packages/%{name}
