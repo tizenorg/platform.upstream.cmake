@@ -1,5 +1,5 @@
 Name:           cmake
-Version:        2.8.10.2
+Version:        2.8.11.2
 Release:        1
 License:        BSD-3-Clause
 Summary:        Cross-platform make system
