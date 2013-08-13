@@ -25,31 +25,43 @@
 #include "cmVS11CLFlagTable.h"
 #include "cmVS11LinkFlagTable.h"
 #include "cmVS11LibFlagTable.h"
+#include "cmVS12CLFlagTable.h"
+#include "cmVS12LinkFlagTable.h"
+#include "cmVS12LibFlagTable.h"
 
 #include <cmsys/auto_ptr.hxx>
 
 static cmVS7FlagTable const*
 cmVSGetCLFlagTable(cmLocalVisualStudioGenerator* lg)
 {
-  if(lg->GetVersion() >= cmLocalVisualStudioGenerator::VS11)
+  if(lg->GetVersion() >= cmLocalVisualStudioGenerator::VS12)
+    { return cmVS12CLFlagTable; }
+  else if(lg->GetVersion() == cmLocalVisualStudioGenerator::VS11)
     { return cmVS11CLFlagTable; }
-  return cmVS10CLFlagTable;
+  else
+    { return cmVS10CLFlagTable; }
 }
 
 static cmVS7FlagTable const*
 cmVSGetLibFlagTable(cmLocalVisualStudioGenerator* lg)
 {
-  if(lg->GetVersion() >= cmLocalVisualStudioGenerator::VS11)
+  if(lg->GetVersion() >= cmLocalVisualStudioGenerator::VS12)
+    { return cmVS12LibFlagTable; }
+  else if(lg->GetVersion() == cmLocalVisualStudioGenerator::VS11)
     { return cmVS11LibFlagTable; }
-  return cmVS10LibFlagTable;
+  else
+    { return cmVS10LibFlagTable; }
 }
 
 static cmVS7FlagTable const*
 cmVSGetLinkFlagTable(cmLocalVisualStudioGenerator* lg)
 {
-  if(lg->GetVersion() >= cmLocalVisualStudioGenerator::VS11)
+  if(lg->GetVersion() >= cmLocalVisualStudioGenerator::VS12)
+    { return cmVS12LinkFlagTable; }
+  else if(lg->GetVersion() == cmLocalVisualStudioGenerator::VS11)
     { return cmVS11LinkFlagTable; }
-  return cmVS10LinkFlagTable;
+  else
+    { return cmVS10LinkFlagTable; }
 }
 
 static std::string cmVS10EscapeXML(std::string arg)
@@ -106,6 +118,11 @@ cmVisualStudio10TargetGenerator::~cmVisualStudio10TargetGenerator()
 {
   for(OptionsMap::iterator i = this->ClOptions.begin();
       i != this->ClOptions.end(); ++i)
+    {
+    delete i->second;
+    }
+  for(OptionsMap::iterator i = this->LinkOptions.begin();
+      i != this->LinkOptions.end(); ++i)
     {
     delete i->second;
     }
@@ -178,6 +195,10 @@ void cmVisualStudio10TargetGenerator::Generate()
   if(this->Target->GetType() <= cmTarget::OBJECT_LIBRARY)
     {
     if(!this->ComputeClOptions())
+      {
+      return;
+      }
+    if(!this->ComputeLinkOptions())
       {
       return;
       }
@@ -395,6 +416,9 @@ void cmVisualStudio10TargetGenerator::WriteProjectConfigurationValues()
       case cmTarget::UTILITY:
         configType += "Utility";
         break;
+      case cmTarget::GLOBAL_TARGET:
+      case cmTarget::UNKNOWN_LIBRARY:
+        break;
       }
     configType += "</ConfigurationType>\n";
     this->WriteString(configType.c_str(), 2);
@@ -416,8 +440,8 @@ void cmVisualStudio10TargetGenerator::WriteProjectConfigurationValues()
     mfcLine += useOfMfcValue + "</UseOfMfc>\n";
     this->WriteString(mfcLine.c_str(), 2);
 
-    if(this->Target->GetType() <= cmTarget::OBJECT_LIBRARY &&
-       this->ClOptions[*i]->UsingUnicode() ||
+    if((this->Target->GetType() <= cmTarget::OBJECT_LIBRARY &&
+       this->ClOptions[*i]->UsingUnicode()) ||
        this->Target->GetPropertyAsBool("VS_WINRT_EXTENSIONS"))
       {
       this->WriteString("<CharacterSet>Unicode</CharacterSet>\n", 2);
@@ -560,6 +584,12 @@ cmVisualStudio10TargetGenerator::WriteCustomRule(cmSourceFile* source,
       sep = ";";
       }
     (*this->BuildFileStream ) << "</Outputs>\n";
+    if(this->LocalGenerator->GetVersion() > cmLocalVisualStudioGenerator::VS10)
+      {
+      // VS >= 11 let us turn off linking of custom command outputs.
+      this->WritePlatformConfigTag("LinkObjects", i->c_str(), 3);
+      (*this->BuildFileStream ) << "false</LinkObjects>\n";
+      }
     }
   this->WriteString("</CustomBuild>\n", 2);
 }
@@ -867,14 +897,23 @@ void cmVisualStudio10TargetGenerator::WriteAllSources()
       }
     }
 
-  for(std::vector<cmSourceFile*>::const_iterator
-        si = this->GeneratorTarget->ExternalObjects.begin();
-      si != this->GeneratorTarget->ExternalObjects.end(); ++si)
+  if(this->LocalGenerator->GetVersion() > cmLocalVisualStudioGenerator::VS10)
+    {
+    // For VS >= 11 we use LinkObjects to avoid linking custom command
+    // outputs.  Use Object for all external objects, generated or not.
+    this->WriteSources("Object", this->GeneratorTarget->ExternalObjects);
+    }
+  else
     {
     // If an object file is generated in this target, then vs10 will use
     // it in the build, and we have to list it as None instead of Object.
-    std::vector<cmSourceFile*> const* d = this->Target->GetSourceDepends(*si);
-    this->WriteSource((d && !d->empty())? "None":"Object", *si);
+    for(std::vector<cmSourceFile*>::const_iterator
+          si = this->GeneratorTarget->ExternalObjects.begin();
+        si != this->GeneratorTarget->ExternalObjects.end(); ++si)
+      {
+      std::vector<cmSourceFile*> const* d=this->Target->GetSourceDepends(*si);
+      this->WriteSource((d && !d->empty())? "None":"Object", *si);
+      }
     }
 
   this->WriteSources("None", this->GeneratorTarget->ExtraSources);
@@ -898,7 +937,6 @@ bool cmVisualStudio10TargetGenerator::OutputSourceSpecificFlags(
   cmSourceFile* source)
 {
   cmSourceFile& sf = *source;
-  cmLocalVisualStudio7Generator* lg = this->LocalGenerator;
 
   std::string objectName;
   if(this->GeneratorTarget->ExplicitObjectName.find(&sf)
@@ -1077,7 +1115,6 @@ void
 cmVisualStudio10TargetGenerator::
 OutputLinkIncremental(std::string const& configName)
 {
-  std::string CONFIG = cmSystemTools::UpperCase(configName);
   // static libraries and things greater than modules do not need
   // to set this option
   if(this->Target->GetType() == cmTarget::STATIC_LIBRARY
@@ -1085,72 +1122,36 @@ OutputLinkIncremental(std::string const& configName)
     {
     return;
     }
-  const char* linkType = "SHARED";
-  if(this->Target->GetType() == cmTarget::EXECUTABLE)
-    {
-    linkType = "EXE";
-    }
+  Options& linkOptions = *(this->LinkOptions[configName]);
 
-  // assume incremental linking
-  const char* incremental = "true";
-  const char* linkLanguage =
-    this->Target->GetLinkerLanguage(configName.c_str());
-  if(!linkLanguage)
-    {
-    cmSystemTools::Error
-      ("CMake can not determine linker language for target:",
-       this->Name.c_str());
-    return;
-    }
-  std::string linkFlagVarBase = "CMAKE_";
-  linkFlagVarBase += linkType;
-  linkFlagVarBase += "_LINKER_FLAGS";
-  std::string flags = this->
-    Target->GetMakefile()->GetRequiredDefinition(linkFlagVarBase.c_str());
-  std::string linkFlagVar = linkFlagVarBase + "_" + CONFIG;
-  flags += this->
-    Target->GetMakefile()->GetRequiredDefinition(linkFlagVar.c_str());
-  if(strcmp(linkLanguage, "C") == 0 || strcmp(linkLanguage, "CXX") == 0
-     || strcmp(linkLanguage, "Fortran") == 0)
-    {
-    std::string baseFlagVar = "CMAKE_";
-    baseFlagVar += linkLanguage;
-    baseFlagVar += "_FLAGS";
-    flags += this->
-      Target->GetMakefile()->GetRequiredDefinition(baseFlagVar.c_str());
-    std::string flagVar = baseFlagVar + std::string("_") + CONFIG;
-    flags +=
-      Target->GetMakefile()->GetRequiredDefinition(flagVar.c_str());
-    }
-  const char* targetLinkFlags = this->Target->GetProperty("LINK_FLAGS");
-  if(targetLinkFlags)
-    {
-    flags += " ";
-    flags += targetLinkFlags;
-    }
-  std::string flagsProp = "LINK_FLAGS_";
-  flagsProp += CONFIG;
-  if(const char* flagsConfig = this->Target->GetProperty(flagsProp.c_str()))
-    {
-    flags += " ";
-    flags += flagsConfig;
-    }
-  if(flags.find("INCREMENTAL:NO") != flags.npos)
-    {
-    incremental = "false";
-    }
+  const char* incremental = linkOptions.GetFlag("LinkIncremental");
   this->WritePlatformConfigTag("LinkIncremental", configName.c_str(), 3);
-  *this->BuildFileStream << incremental
+  *this->BuildFileStream << (incremental?incremental:"true")
                          << "</LinkIncremental>\n";
+  linkOptions.RemoveFlag("LinkIncremental");
 
-  const char* manifest = "true";
-  if(flags.find("MANIFEST:NO") != flags.npos)
-    {
-    manifest = "false";
-    }
+  const char* manifest = linkOptions.GetFlag("GenerateManifest");
   this->WritePlatformConfigTag("GenerateManifest", configName.c_str(), 3);
-  *this->BuildFileStream << manifest
+  *this->BuildFileStream << (manifest?manifest:"true")
                          << "</GenerateManifest>\n";
+  linkOptions.RemoveFlag("GenerateManifest");
+
+  // Some link options belong here.  Use them now and remove them so that
+  // WriteLinkOptions does not use them.
+  const char* flags[] = {
+    "LinkDelaySign",
+    "LinkKeyFile",
+    0};
+  for(const char** f = flags; *f; ++f)
+    {
+    const char* flag = *f;
+    if(const char* value = linkOptions.GetFlag(flag))
+      {
+      this->WritePlatformConfigTag(flag, configName.c_str(), 3);
+      *this->BuildFileStream << value << "</" << flag << ">\n";
+      linkOptions.RemoveFlag(flag);
+      }
+    }
 }
 
 //----------------------------------------------------------------------------
@@ -1231,9 +1232,7 @@ bool cmVisualStudio10TargetGenerator::ComputeClOptions(
   clOptions.AddFlag("PrecompiledHeader", "NotUsing");
   clOptions.Parse(flags.c_str());
   clOptions.Parse(defineFlags.c_str());
-  clOptions.AddDefines(
-                     this->GeneratorTarget->GetCompileDefinitions().c_str());
-  clOptions.AddDefines(this->GeneratorTarget->GetCompileDefinitions(
+  clOptions.AddDefines(this->Target->GetCompileDefinitions(
                                                 configName.c_str()).c_str());
   clOptions.SetVerboseMakefile(
     this->Makefile->IsOn("CMAKE_VERBOSE_MAKEFILE"));
@@ -1343,18 +1342,36 @@ cmVisualStudio10TargetGenerator::WriteLibOptions(std::string const& config)
     }
 }
 
-
-void cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const&
-                                                       config)
+//----------------------------------------------------------------------------
+bool cmVisualStudio10TargetGenerator::ComputeLinkOptions()
 {
-
-  // static libraries and things greater than modules do not need
-  // to set this option
-  if(this->Target->GetType() == cmTarget::STATIC_LIBRARY
-     || this->Target->GetType() > cmTarget::MODULE_LIBRARY)
+  if(this->Target->GetType() == cmTarget::EXECUTABLE ||
+     this->Target->GetType() == cmTarget::SHARED_LIBRARY ||
+     this->Target->GetType() == cmTarget::MODULE_LIBRARY)
     {
-    return;
+    std::vector<std::string> const* configs =
+      this->GlobalGenerator->GetConfigurations();
+    for(std::vector<std::string>::const_iterator i = configs->begin();
+        i != configs->end(); ++i)
+      {
+      if(!this->ComputeLinkOptions(*i))
+        {
+        return false;
+        }
+      }
     }
+  return true;
+}
+
+//----------------------------------------------------------------------------
+bool
+cmVisualStudio10TargetGenerator::ComputeLinkOptions(std::string const& config)
+{
+  cmsys::auto_ptr<Options> pOptions(
+    new Options(this->LocalGenerator, Options::Linker,
+                cmVSGetLinkFlagTable(this->LocalGenerator), 0, this));
+  Options& linkOptions = *pOptions;
+
   const char* linkLanguage =
     this->Target->GetLinkerLanguage(config.c_str());
   if(!linkLanguage)
@@ -1362,10 +1379,9 @@ void cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const&
     cmSystemTools::Error
       ("CMake can not determine linker language for target:",
        this->Name.c_str());
-    return;
+    return false;
     }
 
-  this->WriteString("<Link>\n", 2);
   std::string CONFIG = cmSystemTools::UpperCase(config);
 
   const char* linkType = "SHARED";
@@ -1384,10 +1400,9 @@ void cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const&
   std::string flags;
   if(stackVal)
     {
-    flags += " ";
+    flags += " /STACK:";
     flags += stackVal;
     }
-  // assume incremental linking
   std::string linkFlagVarBase = "CMAKE_";
   linkFlagVarBase += linkType;
   linkFlagVarBase += "_LINKER_FLAGS";
@@ -1411,10 +1426,6 @@ void cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const&
     flags += " ";
     flags += flagsConfig;
     }
-  cmVisualStudioGeneratorOptions
-    linkOptions(this->LocalGenerator,
-                cmVisualStudioGeneratorOptions::Linker,
-                cmVSGetLinkFlagTable(this->LocalGenerator), 0, this);
   if ( this->Target->GetPropertyAsBool("WIN32_EXECUTABLE") )
     {
     flags += " /SUBSYSTEM:WINDOWS";
@@ -1423,8 +1434,6 @@ void cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const&
     {
     flags += " /SUBSYSTEM:CONSOLE";
     }
-  cmSystemTools::ReplaceString(flags, "/INCREMENTAL:YES", "");
-  cmSystemTools::ReplaceString(flags, "/INCREMENTAL:NO", "");
   std::string standardLibsVar = "CMAKE_";
   standardLibsVar += linkLanguage;
   standardLibsVar += "_STANDARD_LIBRARIES";
@@ -1446,13 +1455,13 @@ void cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const&
   // Replace spaces in libs with ;
   cmSystemTools::ReplaceString(libs, " ", ";");
   cmComputeLinkInformation* pcli =
-    this->GeneratorTarget->GetLinkInformation(config.c_str());
+    this->Target->GetLinkInformation(config.c_str());
   if(!pcli)
     {
     cmSystemTools::Error
       ("CMake can not compute cmComputeLinkInformation for target:",
        this->Name.c_str());
-    return;
+    return false;
     }
   // add the libraries for the target to libs string
   cmComputeLinkInformation& cli = *pcli;
@@ -1521,7 +1530,22 @@ void cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const&
                         this->GeneratorTarget->ModuleDefinitionFile.c_str());
     }
 
-  linkOptions.RemoveFlag("GenerateManifest");
+  this->LinkOptions[config] = pOptions.release();
+  return true;
+}
+
+//----------------------------------------------------------------------------
+void
+cmVisualStudio10TargetGenerator::WriteLinkOptions(std::string const& config)
+{
+  if(this->Target->GetType() == cmTarget::STATIC_LIBRARY
+     || this->Target->GetType() > cmTarget::MODULE_LIBRARY)
+    {
+    return;
+    }
+  Options& linkOptions = *(this->LinkOptions[config]);
+  this->WriteString("<Link>\n", 2);
+
   linkOptions.OutputAdditionalOptions(*this->BuildFileStream, "      ", "");
   linkOptions.OutputFlagMap(*this->BuildFileStream, "      ");
 
