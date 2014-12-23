@@ -24,19 +24,14 @@ cmMakefileLibraryTargetGenerator
 ::cmMakefileLibraryTargetGenerator(cmTarget* target):
   cmMakefileTargetGenerator(target)
 {
-  cmOSXBundleGenerator::PrepareTargetProperties(this->Target);
-
   this->CustomCommandDriver = OnDepends;
   this->Target->GetLibraryNames(
     this->TargetNameOut, this->TargetNameSO, this->TargetNameReal,
     this->TargetNameImport, this->TargetNamePDB, this->ConfigName);
 
   this->OSXBundleGenerator = new cmOSXBundleGenerator(this->Target,
-                                                      this->TargetNameOut,
                                                       this->ConfigName);
   this->OSXBundleGenerator->SetMacContentFolders(&this->MacContentFolders);
-  this->MacContentDirectory =
-    this->OSXBundleGenerator->GetMacContentDirectory();
 }
 
 //----------------------------------------------------------------------------
@@ -149,12 +144,8 @@ void cmMakefileLibraryTargetGenerator::WriteStaticLibraryRules()
     }
 
   std::string extraFlags;
-  this->LocalGenerator->AppendFlags
-    (extraFlags,this->Target->GetProperty("STATIC_LIBRARY_FLAGS"));
-  std::string staticLibraryFlagsConfig = "STATIC_LIBRARY_FLAGS_";
-  staticLibraryFlagsConfig += cmSystemTools::UpperCase(this->ConfigName);
-  this->LocalGenerator->AppendFlags
-    (extraFlags, this->Target->GetProperty(staticLibraryFlagsConfig.c_str()));
+  this->LocalGenerator->GetStaticLibraryFlags(extraFlags,
+    cmSystemTools::UpperCase(this->ConfigName), this->Target);
   this->WriteLibraryRules(linkRuleVar.c_str(), extraFlags.c_str(), false);
 }
 
@@ -292,14 +283,15 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
   std::string outpathImp;
   if(this->Target->IsFrameworkOnApple())
     {
-    outpath = this->MacContentDirectory;
-    this->OSXBundleGenerator->CreateFramework(targetName);
+    outpath = this->Target->GetDirectory(this->ConfigName);
+    this->OSXBundleGenerator->CreateFramework(targetName, outpath);
+    outpath += "/";
     }
   else if(this->Target->IsCFBundleOnApple())
     {
     outpath = this->Target->GetDirectory(this->ConfigName);
-    outpath += "/";
     this->OSXBundleGenerator->CreateCFBundle(targetName, outpath);
+    outpath += "/";
     }
   else if(relink)
     {
@@ -585,13 +577,11 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
   vars.CMTarget = this->Target;
   vars.Language = linkLanguage;
   vars.Objects = buildObjs.c_str();
-  std::string objdir = cmake::GetCMakeFilesDirectoryPostSlash();
-  objdir += this->Target->GetName();
-  objdir += ".dir";
-  objdir = this->Convert(objdir.c_str(),
-                         cmLocalGenerator::START_OUTPUT,
-                         cmLocalGenerator::SHELL);
-  vars.ObjectDir = objdir.c_str();
+  std::string objectDir = this->Target->GetSupportDirectory();
+  objectDir = this->Convert(objectDir.c_str(),
+                            cmLocalGenerator::START_OUTPUT,
+                            cmLocalGenerator::SHELL);
+  vars.ObjectDir = objectDir.c_str();
   vars.Target = targetOutPathReal.c_str();
   vars.LinkLibraries = linkLibs.c_str();
   vars.ObjectsQuoted = buildObjs.c_str();
@@ -727,7 +717,8 @@ void cmMakefileLibraryTargetGenerator::WriteLibraryRules
   commands1.clear();
 
   // Add a rule to create necessary symlinks for the library.
-  if(targetOutPath != targetOutPathReal)
+  // Frameworks are handled by cmOSXBundleGenerator.
+  if(targetOutPath != targetOutPathReal && !this->Target->IsFrameworkOnApple())
     {
     std::string symlink = "$(CMAKE_COMMAND) -E cmake_symlink_library ";
     symlink += targetOutPathReal;
