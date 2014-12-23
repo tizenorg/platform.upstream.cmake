@@ -1,6 +1,6 @@
 Name:           cmake
-Version:        2.8.11.2
-Release:        1
+Version:        2.8.12.2
+Release:        0
 License:        BSD-3-Clause
 Summary:        Cross-platform make system
 Url:            http://www.cmake.org
@@ -8,7 +8,7 @@ Group:          Platfrom Development/Tools
 Source0:        http://www.cmake.org/files/v2.8/cmake-%{version}.tar.gz
 Source1:        macros.cmake
 Source2:        TizenCommon.cmake
-Source1001: 	cmake.manifest
+Source1001:     cmake.manifest
 BuildRequires:  fdupes
 BuildRequires:  expat-devel
 BuildRequires:  pkgconfig(libarchive) >= 2.8.0
@@ -42,19 +42,19 @@ export CFLAGS="$CXXFLAGS"
     --system-libs \
     --parallel=0%jobs \
     --no-qt-gui
-make VERBOSE=1 %{?_smp_mflags}
+%__make VERBOSE=1 %{?_smp_mflags}
 
 %install
 %make_install 
-mkdir -p %{buildroot}%{_libdir}/cmake
-find %{buildroot}/usr/share/cmake -type f -print0 | xargs -0 chmod 644
-cp %{SOURCE2} %{buildroot}/%{_datadir}/%{name}/Modules
+mkdir -p %{buildroot}%{_libdir}/%{name}
+find %{buildroot}%{_datadir}/%{name} -type f -print0 | xargs -0 chmod 644
+cp %{SOURCE2} %{buildroot}%{_datadir}/%{name}/Modules
 
 # Install cmake rpm macros
 install -D -p -m 0644 %{S:1} \
   %{buildroot}%{_sysconfdir}/rpm/macros.cmake
 
-fdupes %buildroot/usr/share/cmake
+fdupes %{buildroot}%{_datadir}/%{name}
 
 %docs_package
 
