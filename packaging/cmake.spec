@@ -12,7 +12,6 @@ Source1001:     cmake.manifest
 BuildRequires:  fdupes
 BuildRequires:  expat-devel
 BuildRequires:  pkgconfig(libarchive) >= 2.8.0
-BuildRequires:  pkgconfig(libcurl)
 BuildRequires:  pkgconfig(zlib)
 BuildRequires:  procps
 BuildRequires:  ncurses-devel
@@ -41,11 +40,12 @@ export CFLAGS="$CXXFLAGS"
     --mandir=/share/man \
     --system-libs \
     --parallel=0%jobs \
-    --no-qt-gui
+    --no-qt-gui \
+    --no-system-curl
 %__make VERBOSE=1 %{?_smp_mflags}
 
 %install
-%make_install 
+%make_install
 mkdir -p %{buildroot}%{_libdir}/%{name}
 find %{buildroot}%{_datadir}/%{name} -type f -print0 | xargs -0 chmod 644
 cp %{SOURCE2} %{buildroot}%{_datadir}/%{name}/Modules
