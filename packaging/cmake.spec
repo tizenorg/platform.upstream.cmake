@@ -31,11 +31,11 @@ template instantiation.
 cp %{SOURCE1001} .
 
 %build
-export CFLAGS+=" -fvisibility=hidden"
-  export CXXFLAGS+=" -fvisibility=hidden"
   
 export CXXFLAGS="$RPM_OPT_FLAGS"
 export CFLAGS="$CXXFLAGS"
+export CFLAGS+=" -fvisibility=hidden"
+  export CXXFLAGS+=" -fvisibility=hidden"
 ./configure \
     --prefix=%{_prefix} \
     --datadir=/share/%{name} \
